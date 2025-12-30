@@ -38,3 +38,14 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # other files
 research.md
+ucharm-*
+
+# build artifacts
+checkname
+.*.bun-build
+
+# Claude Code
+.claude/
+
+# one-off scripts
+scripts/
