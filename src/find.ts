@@ -233,7 +233,7 @@ export async function findNames(options: FindOptions): Promise<FindResult> {
             model: judgeModel,
             typability: score.typability,
             memorability: score.memorability,
-            meaning: score.meaning,
+            story: score.story,
             uniqueness: score.uniqueness,
             culturalRisk: score.culturalRisk,
             overall: score.overall,
@@ -320,24 +320,18 @@ export function generateFindReport(result: FindResult): string {
 
   lines.push(`# Project Name Candidates`);
   lines.push("");
-  lines.push(`**Project:** ${result.description}`);
-  lines.push(`**Generator Model:** ${result.generateModel}`);
-  lines.push(`**Judge Model:** ${result.judgeModel}`);
-  lines.push(`**Date:** ${new Date().toISOString().split("T")[0]}`);
-  lines.push("");
-  lines.push(`## Search Statistics`);
-  lines.push("");
-  lines.push(`- **Iterations:** ${result.iterations}`);
-  lines.push(`- **Names Generated:** ${result.totalGenerated}`);
-  lines.push(`- **Names Judged:** ${result.totalJudged}`);
-  lines.push(`- **Quality Candidates Found:** ${result.candidates.length}`);
-  lines.push("");
-  lines.push(`---`);
+  lines.push(
+    `${result.description} | ${result.candidates.length} found from ${result.totalGenerated} generated`,
+  );
   lines.push("");
 
-  // Candidates
-  lines.push(`## Top ${result.candidates.length} Candidates`);
-  lines.push("");
+  // Compact table with scores
+  lines.push(
+    `| # | Name | Score | Typ | Mem | Story | Uniq | Risk | Avail | Verdict |`,
+  );
+  lines.push(
+    `|---|------|-------|-----|-----|-------|------|------|-------|---------|`,
+  );
 
   for (let i = 0; i < result.candidates.length; i++) {
     const c = result.candidates[i];
@@ -347,64 +341,27 @@ export function generateFindReport(result: FindResult): string {
         : c.score.verdict === "consider"
           ? "🤔"
           : "❌";
+    lines.push(
+      `| ${i + 1} | **${c.name}** | ${c.score.overall.toFixed(1)} | ${c.score.typability} | ${c.score.memorability} | ${c.score.story} | ${c.score.uniqueness} | ${c.score.culturalRisk} | ${Math.round(c.availability * 100)}% | ${verdictIcon} |`,
+    );
+  }
 
-    lines.push(
-      `### ${i + 1}. ${c.name} (${c.score.overall.toFixed(1)}/5) ${verdictIcon} ${c.score.verdict}`,
-    );
-    lines.push("");
-    lines.push(`**Rationale:** ${c.rationale}`);
-    if (c.source) {
-      lines.push(`**Source:** ${c.source}`);
-    }
-    lines.push(
-      `**Availability:** ${Math.round(c.availability * 100)}% (${c.availableChecks}/${c.totalChecks} checks passed)`,
-    );
-    lines.push("");
-    lines.push(`| Criteria | Score |`);
-    lines.push(`|----------|-------|`);
-    lines.push(`| Typability | ${c.score.typability}/5 |`);
-    lines.push(`| Memorability | ${c.score.memorability}/5 |`);
-    lines.push(`| Meaning | ${c.score.meaning}/5 |`);
-    lines.push(`| Uniqueness | ${c.score.uniqueness}/5 |`);
-    lines.push(`| Cultural Risk | ${c.score.culturalRisk}/5 |`);
-    lines.push("");
+  lines.push("");
+
+  // Candidate details (rationale + weaknesses only)
+  for (let i = 0; i < result.candidates.length; i++) {
+    const c = result.candidates[i];
+    let detail = `**${c.name}**: ${c.rationale}`;
     if (c.score.weaknesses) {
-      lines.push(`**Weaknesses:** ${c.score.weaknesses}`);
-      lines.push("");
+      detail += ` ⚠️ ${c.score.weaknesses}`;
     }
-    lines.push(`---`);
-    lines.push("");
-  }
-
-  // Quick reference table
-  lines.push(`## Quick Reference`);
-  lines.push("");
-  lines.push(`| Rank | Name | Score | Verdict | Availability |`);
-  lines.push(`|------|------|-------|---------|--------------|`);
-
-  for (let i = 0; i < result.candidates.length; i++) {
-    const c = result.candidates[i];
-    const verdictIcon =
-      c.score.verdict === "strong"
-        ? "✅"
-        : c.score.verdict === "consider"
-          ? "🤔"
-          : "❌";
-    lines.push(
-      `| ${i + 1} | **${c.name}** | ${c.score.overall.toFixed(1)}/5 | ${verdictIcon} ${c.score.verdict} | ${Math.round(c.availability * 100)}% |`,
-    );
+    lines.push(detail);
   }
 
   lines.push("");
-  lines.push(`## Scoring Legend`);
-  lines.push("");
-  lines.push(`- **Typability** - Easy to type, no awkward key combos`);
-  lines.push(`- **Memorability** - Sticks in the mind`);
-  lines.push(`- **Meaning** - Relevant to project purpose`);
-  lines.push(`- **Uniqueness** - Stands out, not already overused`);
-  lines.push(`- **Cultural Risk** - 1=safe, 5=problematic`);
-  lines.push("");
-  lines.push(`Scale: 1=Poor, 2=Below Average, 3=Average, 4=Good, 5=Excellent`);
+  lines.push(
+    `_Scores: Typ=Typability, Mem=Memorability, Story=Metaphor/connection, Uniq=Uniqueness, Risk=Cultural (1=safe, 5=bad)_`,
+  );
 
   return lines.join("\n");
 }

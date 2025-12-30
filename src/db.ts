@@ -22,6 +22,7 @@ export function getDb(): Database {
   db = new Database(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL");
   initSchema();
+  runMigrations();
   return db;
 }
 
@@ -67,7 +68,7 @@ function initSchema(): void {
       model TEXT NOT NULL,
       typability INTEGER,
       memorability INTEGER,
-      meaning INTEGER,
+      story INTEGER,
       uniqueness INTEGER,
       cultural_risk INTEGER,
       overall REAL,
@@ -83,6 +84,24 @@ function initSchema(): void {
   `);
 }
 
+function runMigrations(): void {
+  if (!db) return;
+
+  // Migration: rename 'meaning' column to 'story' in scores table
+  // Check if the old column exists
+  const tableInfo = db
+    .query<{ name: string }, []>("PRAGMA table_info(scores)")
+    .all();
+
+  const hasMeaningColumn = tableInfo.some((col) => col.name === "meaning");
+  const hasStoryColumn = tableInfo.some((col) => col.name === "story");
+
+  if (hasMeaningColumn && !hasStoryColumn) {
+    // SQLite supports ALTER TABLE RENAME COLUMN since version 3.25.0
+    db.exec("ALTER TABLE scores RENAME COLUMN meaning TO story");
+  }
+}
+
 // Project operations
 export function getOrCreateProject(tag: string, description?: string): number {
   const db = getDb();
@@ -95,28 +114,31 @@ export function getOrCreateProject(tag: string, description?: string): number {
   if (existing) {
     // Update description if provided
     if (description) {
-      db.run("UPDATE projects SET description = ?, updated_at = datetime('now') WHERE id = ?", [
-        description,
-        existing.id,
-      ]);
+      db.run(
+        "UPDATE projects SET description = ?, updated_at = datetime('now') WHERE id = ?",
+        [description, existing.id],
+      );
     }
     return existing.id;
   }
 
   // Create new project
-  const result = db.run("INSERT INTO projects (tag, description) VALUES (?, ?)", [
-    tag,
-    description || null,
-  ]);
+  const result = db.run(
+    "INSERT INTO projects (tag, description) VALUES (?, ?)",
+    [tag, description || null],
+  );
   return Number(result.lastInsertRowid);
 }
 
-export function getProject(tag: string): { id: number; tag: string; description: string | null } | null {
+export function getProject(
+  tag: string,
+): { id: number; tag: string; description: string | null } | null {
   const db = getDb();
   return db
-    .query<{ id: number; tag: string; description: string | null }, [string]>(
-      "SELECT id, tag, description FROM projects WHERE tag = ?"
-    )
+    .query<
+      { id: number; tag: string; description: string | null },
+      [string]
+    >("SELECT id, tag, description FROM projects WHERE tag = ?")
     .get(tag);
 }
 
@@ -129,7 +151,12 @@ export function listProjects(): Array<{
   const db = getDb();
   return db
     .query<
-      { tag: string; description: string | null; nameCount: number; strongCount: number },
+      {
+        tag: string;
+        description: string | null;
+        nameCount: number;
+        strongCount: number;
+      },
       []
     >(
       `SELECT
@@ -141,7 +168,7 @@ export function listProjects(): Array<{
       LEFT JOIN names n ON n.project_id = p.id
       LEFT JOIN scores s ON s.name_id = n.id
       GROUP BY p.id
-      ORDER BY p.updated_at DESC`
+      ORDER BY p.updated_at DESC`,
     )
     .all();
 }
@@ -151,13 +178,13 @@ export function addName(
   projectId: number,
   name: string,
   rationale?: string,
-  source?: string
+  source?: string,
 ): number | null {
   const db = getDb();
   try {
     const result = db.run(
       "INSERT INTO names (project_id, name, rationale, source) VALUES (?, ?, ?, ?)",
-      [projectId, name.toLowerCase(), rationale || null, source || null]
+      [projectId, name.toLowerCase(), rationale || null, source || null],
     );
     return Number(result.lastInsertRowid);
   } catch {
@@ -169,9 +196,10 @@ export function addName(
 export function getNameId(projectId: number, name: string): number | null {
   const db = getDb();
   const result = db
-    .query<{ id: number }, [number, string]>(
-      "SELECT id FROM names WHERE project_id = ? AND name = ?"
-    )
+    .query<
+      { id: number },
+      [number, string]
+    >("SELECT id FROM names WHERE project_id = ? AND name = ?")
     .get(projectId, name.toLowerCase());
   return result?.id || null;
 }
@@ -179,7 +207,9 @@ export function getNameId(projectId: number, name: string): number | null {
 export function getProjectNames(projectId: number): string[] {
   const db = getDb();
   return db
-    .query<{ name: string }, [number]>("SELECT name FROM names WHERE project_id = ?")
+    .query<{ name: string }, [number]>(
+      "SELECT name FROM names WHERE project_id = ?",
+    )
     .all(projectId)
     .map((r) => r.name);
 }
@@ -189,23 +219,26 @@ export function addAvailabilityCheck(
   nameId: number,
   checker: string,
   available: boolean,
-  url?: string
+  url?: string,
 ): void {
   const db = getDb();
   db.run(
     `INSERT OR REPLACE INTO availability_checks (name_id, checker, available, url, checked_at)
      VALUES (?, ?, ?, ?, datetime('now'))`,
-    [nameId, checker, available ? 1 : 0, url || null]
+    [nameId, checker, available ? 1 : 0, url || null],
   );
 }
 
 export function getAvailability(
-  nameId: number
+  nameId: number,
 ): Array<{ checker: string; available: boolean; url: string | null }> {
   const db = getDb();
   return db
-    .query<{ checker: string; available: number; url: string | null }, [number]>(
-      "SELECT checker, available, url FROM availability_checks WHERE name_id = ?"
+    .query<
+      { checker: string; available: number; url: string | null },
+      [number]
+    >(
+      "SELECT checker, available, url FROM availability_checks WHERE name_id = ?",
     )
     .all(nameId)
     .map((r) => ({ ...r, available: r.available === 1 }));
@@ -218,30 +251,30 @@ export function addScore(
     model: string;
     typability: number;
     memorability: number;
-    meaning: number;
+    story: number;
     uniqueness: number;
     culturalRisk: number;
     overall: number;
     verdict: string;
     weaknesses?: string;
-  }
+  },
 ): void {
   const db = getDb();
   db.run(
-    `INSERT INTO scores (name_id, model, typability, memorability, meaning, uniqueness, cultural_risk, overall, verdict, weaknesses)
+    `INSERT INTO scores (name_id, model, typability, memorability, story, uniqueness, cultural_risk, overall, verdict, weaknesses)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       nameId,
       score.model,
       score.typability,
       score.memorability,
-      score.meaning,
+      score.story,
       score.uniqueness,
       score.culturalRisk,
       score.overall,
       score.verdict,
       score.weaknesses || null,
-    ]
+    ],
   );
 }
 
@@ -249,7 +282,7 @@ export function getLatestScore(nameId: number): {
   model: string;
   typability: number;
   memorability: number;
-  meaning: number;
+  story: number;
   uniqueness: number;
   culturalRisk: number;
   overall: number;
@@ -263,7 +296,7 @@ export function getLatestScore(nameId: number): {
         model: string;
         typability: number;
         memorability: number;
-        meaning: number;
+        story: number;
         uniqueness: number;
         cultural_risk: number;
         overall: number;
@@ -272,8 +305,8 @@ export function getLatestScore(nameId: number): {
       },
       [number]
     >(
-      `SELECT model, typability, memorability, meaning, uniqueness, cultural_risk, overall, verdict, weaknesses
-       FROM scores WHERE name_id = ? ORDER BY judged_at DESC LIMIT 1`
+      `SELECT model, typability, memorability, story, uniqueness, cultural_risk, overall, verdict, weaknesses
+       FROM scores WHERE name_id = ? ORDER BY judged_at DESC LIMIT 1`,
     )
     .get(nameId);
 }
@@ -287,7 +320,7 @@ export interface LeaderboardEntry {
   verdict: string;
   typability: number;
   memorability: number;
-  meaning: number;
+  story: number;
   uniqueness: number;
   culturalRisk: number;
   weaknesses: string | null;
@@ -300,10 +333,14 @@ export function getLeaderboard(
     minScore?: number;
     verdicts?: string[];
     limit?: number;
-  } = {}
+  } = {},
 ): LeaderboardEntry[] {
   const db = getDb();
-  const { minScore = 0, verdicts = ["strong", "consider", "reject"], limit = 20 } = options;
+  const {
+    minScore = 0,
+    verdicts = ["strong", "consider", "reject"],
+    limit = 20,
+  } = options;
 
   const verdictsPlaceholder = verdicts.map(() => "?").join(", ");
 
@@ -316,7 +353,7 @@ export function getLeaderboard(
       s.verdict,
       s.typability,
       s.memorability,
-      s.meaning,
+      s.story,
       s.uniqueness,
       s.cultural_risk as culturalRisk,
       s.weaknesses,

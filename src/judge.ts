@@ -5,7 +5,7 @@ export interface NameScore {
   name: string;
   typability: number;
   memorability: number;
-  meaning: number;
+  story: number; // renamed from "meaning" - how clever is the metaphor/connection?
   uniqueness: number;
   culturalRisk: number;
   overall: number;
@@ -59,7 +59,7 @@ function parseJudgeResponse(response: string): NameScore[] {
           name: item.name || "",
           typability: item.typability || 0,
           memorability: item.memorability || 0,
-          meaning: item.meaning || 0,
+          story: item.story || item.meaning || 0, // support both "story" and legacy "meaning"
           uniqueness: item.uniqueness || 0,
           culturalRisk: item.culturalRisk || item.cultural_risk || 0,
           overall: item.overall || 0,
@@ -98,7 +98,7 @@ function parseJudgeResponse(response: string): NameScore[] {
           name: name.replace(/\*\*/g, "").trim(),
           typability: parseInt(typ) || 0,
           memorability: parseInt(mem) || 0,
-          meaning: parseInt(mean) || 0,
+          story: parseInt(mean) || 0, // table column is still called "mean" but maps to story
           uniqueness: parseInt(uniq) || 0,
           culturalRisk: parseInt(cult) || 0,
           overall: parseFloat(overall) || 0,
@@ -168,33 +168,17 @@ export function generateMarkdownReport(result: JudgeResult): string {
 
   lines.push(`# Name Evaluation Report`);
   lines.push("");
-  lines.push(`**Project:** ${result.description}`);
-  lines.push(`**Judge Model:** ${result.model}`);
-  lines.push(`**Date:** ${new Date().toISOString().split("T")[0]}`);
-  lines.push("");
-
-  // Summary
-  lines.push("## Summary");
-  lines.push("");
   lines.push(
-    `- **Strong candidates:** ${result.summary.strong}/${result.scores.length}`,
-  );
-  lines.push(
-    `- **Worth considering:** ${result.summary.consider}/${result.scores.length}`,
-  );
-  lines.push(
-    `- **Rejected:** ${result.summary.reject}/${result.scores.length}`,
+    `${result.description} | ✅ ${result.summary.strong} strong, 🤔 ${result.summary.consider} consider, ❌ ${result.summary.reject} reject`,
   );
   lines.push("");
 
   // Scoring table
-  lines.push("## Detailed Scores");
-  lines.push("");
   lines.push(
-    "| Name | Typ | Mem | Mean | Uniq | Risk | Overall | Verdict | Weaknesses |",
+    "| Name | Typ | Mem | Story | Uniq | Risk | Score | Verdict | Weaknesses |",
   );
   lines.push(
-    "|------|-----|-----|------|------|------|---------|---------|------------|",
+    "|------|-----|-----|-------|------|------|-------|---------|------------|",
   );
 
   // Sort by overall score descending
@@ -209,36 +193,14 @@ export function generateMarkdownReport(result: JudgeResult): string {
           : "❌";
 
     lines.push(
-      `| **${score.name}** | ${score.typability} | ${score.memorability} | ${score.meaning} | ${score.uniqueness} | ${score.culturalRisk} | ${score.overall.toFixed(1)} | ${verdictEmoji} ${score.verdict} | ${score.weaknesses} |`,
+      `| **${score.name}** | ${score.typability} | ${score.memorability} | ${score.story} | ${score.uniqueness} | ${score.culturalRisk} | ${score.overall.toFixed(1)} | ${verdictEmoji} | ${score.weaknesses} |`,
     );
   }
 
   lines.push("");
-
-  // Legend
-  lines.push("## Scoring Legend");
-  lines.push("");
-  lines.push("- **Typ** = Typability (easy to type, no awkward key combos)");
-  lines.push("- **Mem** = Memorability (sticks in the mind)");
-  lines.push("- **Mean** = Meaning (relevant to project purpose)");
-  lines.push("- **Uniq** = Uniqueness (stands out, not generic)");
   lines.push(
-    "- **Risk** = Cultural Risk (1=safe, 5=problematic in some cultures)",
+    `_Typ=Typability, Mem=Memorability, Story=Metaphor/connection, Uniq=Uniqueness, Risk=Cultural (1=safe, 5=bad)_`,
   );
-  lines.push("");
-  lines.push("Scores: 1=Poor, 2=Below Average, 3=Average, 4=Good, 5=Excellent");
-  lines.push("");
-
-  // Top recommendations
-  const strong = sorted.filter((s) => s.verdict === "strong");
-  if (strong.length > 0) {
-    lines.push("## Top Recommendations");
-    lines.push("");
-    for (const s of strong.slice(0, 3)) {
-      lines.push(`1. **${s.name}** (${s.overall.toFixed(1)}/5)`);
-    }
-    lines.push("");
-  }
 
   return lines.join("\n");
 }
