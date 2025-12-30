@@ -1,4 +1,4 @@
-import { chat, getModelId } from "./openrouter";
+import { chat, getModelId, getTemperature } from "./openrouter";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -120,10 +120,17 @@ function buildUserPrompt(template: string, options: GenerateOptions): string {
 export async function generateNames(
   options: GenerateOptions,
 ): Promise<GenerateResult> {
-  const modelId = getModelId(options.model);
+  const modelId = await getModelId(options.model);
 
   const { systemPrompt, userTemplate } = await loadPromptFile();
   const userPrompt = buildUserPrompt(userTemplate, options);
+
+  // Use high temperature for creative generation, lower for refinement
+  const isRefinement =
+    options.excludedNames && options.excludedNames.length > 0;
+  const temperature = await getTemperature(
+    isRefinement ? "refine" : "generate",
+  );
 
   const response = await chat(
     [
@@ -131,6 +138,7 @@ export async function generateNames(
       { role: "user", content: userPrompt },
     ],
     modelId,
+    temperature,
   );
 
   // Parse the JSON response

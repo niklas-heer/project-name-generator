@@ -1,3 +1,6 @@
+import { parse } from "yaml";
+import path from "path";
+
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export interface OpenRouterMessage {
@@ -20,36 +23,87 @@ export interface OpenRouterResponse {
   };
 }
 
-// Popular models for name generation
-export const AVAILABLE_MODELS = {
-  "claude-sonnet": "anthropic/claude-sonnet-4",
-  "claude-haiku": "anthropic/claude-3-5-haiku",
-  "gpt-4o": "openai/gpt-4o",
-  "gpt-4o-mini": "openai/gpt-4o-mini",
-  "llama-70b": "meta-llama/llama-3.3-70b-instruct",
-  "gemini-flash": "google/gemini-2.0-flash-001",
-  "gemini-2.5-pro": "google/gemini-2.5-pro-preview-06-05",
-} as const;
+interface ModelConfig {
+  id: string;
+  description: string;
+}
 
-export type ModelAlias = keyof typeof AVAILABLE_MODELS;
+interface ModelsConfig {
+  models: Record<string, ModelConfig>;
+  defaults: {
+    generate: string;
+    judge: string;
+  };
+  temperature: {
+    generate: number;
+    refine: number;
+    judge: number;
+  };
+}
 
-export const DEFAULT_MODEL: ModelAlias = "claude-sonnet";
+let modelsConfig: ModelsConfig | null = null;
 
-export function getModelId(alias: string): string {
-  if (alias in AVAILABLE_MODELS) {
-    return AVAILABLE_MODELS[alias as ModelAlias];
+async function loadModelsConfig(): Promise<ModelsConfig> {
+  if (modelsConfig) return modelsConfig;
+
+  const configPath = path.join(import.meta.dir, "..", "config", "models.yaml");
+  const content = await Bun.file(configPath).text();
+  modelsConfig = parse(content) as ModelsConfig;
+  return modelsConfig;
+}
+
+export async function getModelId(alias: string): Promise<string> {
+  const config = await loadModelsConfig();
+  if (alias in config.models) {
+    return config.models[alias].id;
   }
   // Allow passing full model IDs directly
   return alias;
 }
 
+export async function listModels(): Promise<string[]> {
+  const config = await loadModelsConfig();
+  return Object.keys(config.models);
+}
+
+export async function getModelDetails(): Promise<Record<string, ModelConfig>> {
+  const config = await loadModelsConfig();
+  return config.models;
+}
+
+export async function getDefaultModel(
+  command: "generate" | "judge",
+): Promise<string> {
+  const config = await loadModelsConfig();
+  return config.defaults[command];
+}
+
+export async function getTemperature(
+  task: "generate" | "refine" | "judge",
+): Promise<number> {
+  const config = await loadModelsConfig();
+  return config.temperature[task];
+}
+
 export async function chat(
   messages: OpenRouterMessage[],
-  model: string = AVAILABLE_MODELS[DEFAULT_MODEL],
+  model: string,
+  temperature?: number,
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY not set. Add it to your .env file.");
+  }
+
+  const modelId = await getModelId(model);
+
+  const body: Record<string, unknown> = {
+    model: modelId,
+    messages,
+  };
+
+  if (temperature !== undefined) {
+    body.temperature = temperature;
   }
 
   const response = await fetch(OPENROUTER_API_URL, {
@@ -60,10 +114,7 @@ export async function chat(
       "HTTP-Referer": "https://github.com/niklas-heer/project-name-generator",
       "X-Title": "Project Name Generator",
     },
-    body: JSON.stringify({
-      model,
-      messages,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -75,22 +126,19 @@ export async function chat(
   return data.choices[0]?.message?.content || "";
 }
 
-export function listModels(): string[] {
-  return Object.keys(AVAILABLE_MODELS);
-}
-
 // Helper for simple system + user prompt calls
 export async function callOpenRouter(options: {
   model: string;
   systemPrompt: string;
   userPrompt: string;
+  temperature?: number;
 }): Promise<string> {
-  const modelId = getModelId(options.model);
   return chat(
     [
       { role: "system", content: options.systemPrompt },
       { role: "user", content: options.userPrompt },
     ],
-    modelId,
+    options.model,
+    options.temperature,
   );
 }

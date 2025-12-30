@@ -1,4 +1,4 @@
-import { callOpenRouter } from "./openrouter";
+import { callOpenRouter, getTemperature } from "./openrouter";
 import path from "path";
 
 export interface NameScore {
@@ -136,10 +136,14 @@ export async function judgeNames(options: {
     .replace("{{NAMES}}", namesList)
     .replace("{{COUNT}}", names.length.toString());
 
+  // Use low temperature for analytical evaluation
+  const temperature = await getTemperature("judge");
+
   const response = await callOpenRouter({
     model,
     systemPrompt: promptTemplate.system,
     userPrompt,
+    temperature,
   });
 
   const scores = parseJudgeResponse(response);
