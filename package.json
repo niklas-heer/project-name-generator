@@ -1,0 +1,29 @@
+{
+  "name": "project-name-generator",
+  "version": "0.1.0",
+  "description": "Check name availability across package registries, repositories, domains, and trademarks",
+  "module": "src/cli.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "checkname": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "check": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "bun build src/cli.ts --compile --outfile checkname"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "octokit": "^5.0.5",
+    "yaml": "^2.8.2"
+  }
+}
