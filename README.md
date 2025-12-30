@@ -141,7 +141,7 @@ bun run src/cli.ts judge "A task runner" -f candidates.json -m claude-sonnet
 **Scoring (1-5):**
 - **Typability** - Easy to type, no awkward key combos
 - **Memorability** - Sticks in the mind
-- **Meaning** - Relevant to project purpose
+- **Story** - Clever metaphor or narrative connection (like "Rust" or "Docker")
 - **Uniqueness** - Stands out, not already overused
 - **Cultural Risk** - 1=safe, 5=problematic
 
