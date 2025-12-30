@@ -1,0 +1,93 @@
+# Checker Profiles
+# Define which platforms to check for different use cases
+
+profiles:
+  # Minimal check - just the essentials
+  minimal:
+    description: "Quick check for npm, PyPI, and .dev domain"
+    checkers:
+      - npm
+      - pypi
+      - domain-dev
+
+  # Node.js / JavaScript projects
+  node:
+    description: "Node.js ecosystem checks"
+    checkers:
+      - npm
+      - npm-org
+      - github
+      - github-org
+      - domain-dev
+
+  # Python projects
+  python:
+    description: "Python ecosystem checks"
+    checkers:
+      - pypi
+      - github
+      - github-org
+      - domain-dev
+
+  # Rust projects
+  rust:
+    description: "Rust ecosystem checks"
+    checkers:
+      - crates.io
+      - github
+      - github-org
+      - domain-dev
+
+  # Go projects
+  go:
+    description: "Go ecosystem checks"
+    checkers:
+      - go
+      - github
+      - github-org
+      - domain-dev
+
+  # Full check - all platforms except manual trademark checks
+  full:
+    description: "All automated checks (excludes manual trademark lookups)"
+    checkers:
+      - npm
+      - npm-org
+      - pypi
+      - crates.io
+      - nuget
+      - go
+      - packagist
+      - homebrew
+      - nixpkgs
+      - github
+      - github-org
+      - gitlab
+      - domain-dev
+      - github-uniqueness
+
+  # Everything including trademark URLs
+  complete:
+    description: "All checks including trademark search URLs"
+    checkers:
+      - npm
+      - npm-org
+      - pypi
+      - crates.io
+      - nuget
+      - go
+      - packagist
+      - homebrew
+      - nixpkgs
+      - github
+      - github-org
+      - gitlab
+      - domain-dev
+      - github-uniqueness
+      - uspto
+      - google-software
+      - google-opensource
+      - fossmarks
+
+# Default profile used when none specified
+default: full
