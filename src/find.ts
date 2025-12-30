@@ -1,7 +1,15 @@
 import chalk from "chalk";
 import { generateNames, type GeneratedName } from "./generator";
 import { judgeNames, type NameScore } from "./judge";
-import type { Checker } from "./types";
+import type { Checker, CheckResult } from "./types";
+import {
+  getOrCreateProject,
+  getProjectNames,
+  addName,
+  getNameId,
+  addAvailabilityCheck,
+  addScore,
+} from "./db";
 
 export interface FindOptions {
   description: string;
@@ -17,6 +25,7 @@ export interface FindOptions {
   style?: "short" | "word" | "compound" | "all";
   sources?: string[];
   quiet?: boolean; // Suppress progress output
+  project?: string; // Project tag for database tracking
 }
 
 export interface ScoredCandidate {
@@ -49,7 +58,7 @@ interface NameWithAvailability extends GeneratedName {
 async function quickCheck(
   name: string,
   checkers: Checker[],
-): Promise<{ available: number; total: number }> {
+): Promise<{ available: number; total: number; results: CheckResult[] }> {
   const results = await Promise.all(
     checkers.map((checker) => checker.check(name)),
   );
@@ -67,7 +76,7 @@ async function quickCheck(
     }
   }
 
-  return { available, total };
+  return { available, total, results };
 }
 
 export async function findNames(options: FindOptions): Promise<FindResult> {
@@ -85,12 +94,22 @@ export async function findNames(options: FindOptions): Promise<FindResult> {
     style,
     sources,
     quiet = false,
+    project,
   } = options;
 
   const candidates: ScoredCandidate[] = [];
   const allGeneratedNames: string[] = [];
   let iterations = 0;
   let totalJudged = 0;
+
+  // Database tracking
+  let projectId: number | null = null;
+  if (project) {
+    projectId = getOrCreateProject(project, description);
+    // Load previously generated names to exclude
+    const existingNames = getProjectNames(projectId);
+    allGeneratedNames.push(...existingNames);
+  }
 
   const log = (msg: string) => {
     if (!quiet) console.log(msg);
@@ -102,6 +121,13 @@ export async function findNames(options: FindOptions): Promise<FindResult> {
       `Finding ${targetCount} quality candidates for: "${description.slice(0, 60)}${description.length > 60 ? "..." : ""}"`,
     ),
   );
+  if (project) {
+    log(
+      chalk.dim(
+        `Project: ${project} (${allGeneratedNames.length} names already in database)`,
+      ),
+    );
+  }
   log("");
 
   while (candidates.length < targetCount && iterations < maxIterations) {
@@ -122,12 +148,38 @@ export async function findNames(options: FindOptions): Promise<FindResult> {
     const generatedNames = generateResult.names;
     allGeneratedNames.push(...generatedNames.map((n) => n.name));
 
+    // Store names in database
+    if (projectId) {
+      for (const name of generatedNames) {
+        addName(projectId, name.name, name.rationale, name.source);
+      }
+    }
+
     // Check availability for each name
     log(chalk.dim(`  Checking availability...`));
 
     const availabilityResults = await Promise.all(
       generatedNames.map(async (name): Promise<NameWithAvailability> => {
-        const { available, total } = await quickCheck(name.name, checkers);
+        const { available, total, results } = await quickCheck(
+          name.name,
+          checkers,
+        );
+
+        // Store availability in database
+        if (projectId) {
+          const nameId = getNameId(projectId, name.name);
+          if (nameId) {
+            for (const result of results) {
+              addAvailabilityCheck(
+                nameId,
+                result.platform,
+                result.available && !result.error,
+                result.url,
+              );
+            }
+          }
+        }
+
         return {
           ...name,
           availability: total > 0 ? available / total : 0,
@@ -173,6 +225,24 @@ export async function findNames(options: FindOptions): Promise<FindResult> {
       const qualifiedName = qualifiedNames.find((n) => n.name === score.name);
       if (!qualifiedName) continue;
 
+      // Store score in database
+      if (projectId) {
+        const nameId = getNameId(projectId, score.name);
+        if (nameId) {
+          addScore(nameId, {
+            model: judgeModel,
+            typability: score.typability,
+            memorability: score.memorability,
+            meaning: score.meaning,
+            uniqueness: score.uniqueness,
+            culturalRisk: score.culturalRisk,
+            overall: score.overall,
+            verdict: score.verdict,
+            weaknesses: score.weaknesses,
+          });
+        }
+      }
+
       const passesScore = score.overall >= minScore;
       const passesVerdict = verdicts.includes(score.verdict);
 
@@ -188,9 +258,7 @@ export async function findNames(options: FindOptions): Promise<FindResult> {
         });
 
         const verdictIcon =
-          score.verdict === "strong"
-            ? chalk.green("✓")
-            : chalk.yellow("~");
+          score.verdict === "strong" ? chalk.green("✓") : chalk.yellow("~");
         log(
           `  ${verdictIcon} ${chalk.bold(score.name)} (${score.overall.toFixed(1)}) - ${score.verdict}`,
         );
@@ -223,8 +291,16 @@ export async function findNames(options: FindOptions): Promise<FindResult> {
   // Trim to target count
   const finalCandidates = candidates.slice(0, targetCount);
 
-  log(chalk.bold.green(`\nFound ${finalCandidates.length} candidates in ${iterations} iterations`));
-  log(chalk.dim(`(${allGeneratedNames.length} names generated, ${totalJudged} judged)`));
+  log(
+    chalk.bold.green(
+      `\nFound ${finalCandidates.length} candidates in ${iterations} iterations`,
+    ),
+  );
+  log(
+    chalk.dim(
+      `(${allGeneratedNames.length} names generated, ${totalJudged} judged)`,
+    ),
+  );
   log("");
 
   return {
@@ -272,13 +348,17 @@ export function generateFindReport(result: FindResult): string {
           ? "🤔"
           : "❌";
 
-    lines.push(`### ${i + 1}. ${c.name} (${c.score.overall.toFixed(1)}/5) ${verdictIcon} ${c.score.verdict}`);
+    lines.push(
+      `### ${i + 1}. ${c.name} (${c.score.overall.toFixed(1)}/5) ${verdictIcon} ${c.score.verdict}`,
+    );
     lines.push("");
     lines.push(`**Rationale:** ${c.rationale}`);
     if (c.source) {
       lines.push(`**Source:** ${c.source}`);
     }
-    lines.push(`**Availability:** ${Math.round(c.availability * 100)}% (${c.availableChecks}/${c.totalChecks} checks passed)`);
+    lines.push(
+      `**Availability:** ${Math.round(c.availability * 100)}% (${c.availableChecks}/${c.totalChecks} checks passed)`,
+    );
     lines.push("");
     lines.push(`| Criteria | Score |`);
     lines.push(`|----------|-------|`);

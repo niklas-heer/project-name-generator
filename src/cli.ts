@@ -9,6 +9,12 @@ import { runInteractiveMode, runUntilAvailable } from "./interactive";
 import { resolveCheckers, listProfiles } from "./profiles";
 import { judgeNames, generateMarkdownReport } from "./judge";
 import { findNames, generateFindReport } from "./find";
+import {
+  listProjects as listDbProjects,
+  getProject,
+  getLeaderboard,
+  deleteProject,
+} from "./db";
 
 interface CheckNameOptions {
   json?: boolean;
@@ -760,6 +766,7 @@ async function main() {
     sources?: string;
     output?: string;
     json?: boolean;
+    project?: string;
   }
 
   program
@@ -802,6 +809,10 @@ async function main() {
       "all",
     )
     .option("--sources <languages>", "Comma-separated language sources")
+    .option(
+      "--project <tag>",
+      "Project tag for tracking names in database (enables persistence)",
+    )
     .option("-o, --output <file>", "Write markdown report to file")
     .option("-j, --json", "Output as JSON")
     .action(async (description: string, options: FindCommandOptions) => {
@@ -861,6 +872,7 @@ async function main() {
           style: options.style as "short" | "word" | "compound" | "all",
           sources,
           quiet: options.json,
+          project: options.project,
         });
 
         if (options.json) {
@@ -879,6 +891,157 @@ async function main() {
         console.error(
           chalk.red(`Error: ${error instanceof Error ? error.message : error}`),
         );
+        process.exit(1);
+      }
+    });
+
+  // Projects command - list all tracked projects
+  program
+    .command("projects")
+    .description("List all tracked projects in the database")
+    .option("-j, --json", "Output as JSON")
+    .action((options: { json?: boolean }) => {
+      const projects = listDbProjects();
+
+      if (options.json) {
+        console.log(JSON.stringify(projects, null, 2));
+        return;
+      }
+
+      if (projects.length === 0) {
+        console.log(
+          chalk.dim(
+            "\nNo projects found. Use --project <tag> with the find command to start tracking.\n",
+          ),
+        );
+        return;
+      }
+
+      console.log(chalk.bold("\nTracked Projects:\n"));
+      for (const p of projects) {
+        console.log(`  ${chalk.bold.cyan(p.tag)}`);
+        if (p.description) {
+          console.log(
+            `    ${chalk.dim(p.description.slice(0, 60))}${p.description.length > 60 ? "..." : ""}`,
+          );
+        }
+        console.log(
+          `    ${chalk.dim(`${p.nameCount} names generated, ${p.strongCount} strong candidates`)}`,
+        );
+        console.log();
+      }
+    });
+
+  // Leaderboard command - show top candidates for a project
+  program
+    .command("leaderboard")
+    .description("Show top name candidates for a project")
+    .argument("<project>", "Project tag")
+    .option("-n, --limit <number>", "Number of results to show", "10")
+    .option("--min-score <score>", "Minimum score filter", "0")
+    .option(
+      "--verdict <types>",
+      "Filter by verdict (comma-separated)",
+      "strong,consider",
+    )
+    .option("-j, --json", "Output as JSON")
+    .action(
+      (
+        projectTag: string,
+        options: {
+          limit: string;
+          minScore: string;
+          verdict: string;
+          json?: boolean;
+        },
+      ) => {
+        const project = getProject(projectTag);
+        if (!project) {
+          console.error(chalk.red(`Project "${projectTag}" not found.`));
+          console.log(
+            chalk.dim("Use 'checkname projects' to list available projects."),
+          );
+          process.exit(1);
+        }
+
+        const limit = parseInt(options.limit, 10);
+        const minScore = parseFloat(options.minScore);
+        const verdicts = options.verdict.split(",").map((v) => v.trim());
+
+        const entries = getLeaderboard(project.id, {
+          limit,
+          minScore,
+          verdicts,
+        });
+
+        if (options.json) {
+          console.log(
+            JSON.stringify({ project: projectTag, entries }, null, 2),
+          );
+          return;
+        }
+
+        console.log();
+        console.log(chalk.bold(`Leaderboard for "${projectTag}":`));
+        if (project.description) {
+          console.log(chalk.dim(project.description.slice(0, 80)));
+        }
+        console.log();
+
+        if (entries.length === 0) {
+          console.log(chalk.dim("  No scored candidates found."));
+          console.log(
+            chalk.dim(
+              "  Run 'checkname find <description> --project " +
+                projectTag +
+                "' to generate names.",
+            ),
+          );
+          console.log();
+          return;
+        }
+
+        console.log(
+          `  ${chalk.dim("Rank")}  ${chalk.dim("Name".padEnd(15))} ${chalk.dim("Score")} ${chalk.dim("Verdict".padEnd(10))} ${chalk.dim("Avail")}`,
+        );
+        console.log(chalk.dim("  " + "-".repeat(55)));
+
+        for (let i = 0; i < entries.length; i++) {
+          const e = entries[i];
+          const rank = (i + 1).toString().padStart(2);
+          const verdictIcon =
+            e.verdict === "strong"
+              ? chalk.green("✓")
+              : e.verdict === "consider"
+                ? chalk.yellow("~")
+                : chalk.red("✗");
+          const name = e.name.padEnd(15);
+          const score = e.overall.toFixed(1);
+          const verdict = e.verdict.padEnd(10);
+          const avail = `${Math.round(e.availabilityPercent)}%`;
+
+          console.log(
+            `  ${chalk.dim(rank)}.  ${chalk.bold(name)} ${score}   ${verdictIcon} ${verdict} ${chalk.dim(avail)}`,
+          );
+        }
+
+        console.log();
+        console.log(chalk.dim(`  Showing top ${entries.length} candidates.`));
+        console.log();
+      },
+    );
+
+  // Delete project command
+  program
+    .command("delete-project")
+    .description("Delete a project and all its tracked names")
+    .argument("<project>", "Project tag to delete")
+    .action((projectTag: string) => {
+      const deleted = deleteProject(projectTag);
+      if (deleted) {
+        console.log(chalk.green(`Project "${projectTag}" deleted.`));
+      } else {
+        console.error(chalk.red(`Project "${projectTag}" not found.`));
         process.exit(1);
       }
     });

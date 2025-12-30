@@ -49,6 +49,7 @@ Options:
   --judge-model <model>        Judge model
   -p, --profile <name>         Checker profile
   -s, --style <style>          Name style: short, word, compound, all
+  --project <tag>              Project tag for database tracking (enables persistence)
   -o, --output <file>          Write markdown report to file
   -j, --json                   Output as JSON
 ```
@@ -56,17 +57,17 @@ Options:
 **Examples:**
 
 ```bash
-# Find 5 quality names for a Python project
-bun run src/cli.ts find "A Python-to-binary compiler with 6ms startup" -n 5 -p python
+# Find 5 quality names for a Python project (with database tracking)
+bun run src/cli.ts find "A Python-to-binary compiler with 6ms startup" -n 5 -p python --project mycompiler
+
+# Continue searching - automatically excludes previously generated names
+bun run src/cli.ts find "A Python-to-binary compiler" -n 3 --project mycompiler
 
 # Only accept strong verdicts with score >= 4.0
 bun run src/cli.ts find "A fast web framework" --min-score 4.0 --verdict strong
 
 # Save report to file
 bun run src/cli.ts find "A CLI task runner" -n 3 -o report.md
-
-# Use specific models
-bun run src/cli.ts find "My project" -m claude-sonnet-4.5 --judge-model gemini-3-pro
 ```
 
 ### `generate` - AI Name Generation
@@ -178,6 +179,49 @@ bun run src/cli.ts check myproject --skip uspto,google-software,google-opensourc
 bun run src/cli.ts check myproject --json
 ```
 
+### `projects` - List Tracked Projects
+
+View all projects you've been tracking in the database.
+
+```bash
+bun run src/cli.ts projects
+```
+
+### `leaderboard` - View Top Candidates
+
+Show the best name candidates for a tracked project.
+
+```bash
+bun run src/cli.ts leaderboard <project> [options]
+
+Options:
+  -n, --limit <number>    Number of results (default: 10)
+  --min-score <score>     Minimum score filter
+  --verdict <types>       Filter by verdict (default: strong,consider)
+  -j, --json              Output as JSON
+```
+
+**Examples:**
+
+```bash
+# Show top 10 candidates for a project
+bun run src/cli.ts leaderboard mycompiler
+
+# Show only strong candidates
+bun run src/cli.ts leaderboard mycompiler --verdict strong
+
+# Export as JSON
+bun run src/cli.ts leaderboard mycompiler --json
+```
+
+### `delete-project` - Remove a Project
+
+Delete a project and all its tracked names from the database.
+
+```bash
+bun run src/cli.ts delete-project <project>
+```
+
 ### Other Commands
 
 ```bash
@@ -193,30 +237,28 @@ bun run src/cli.ts profiles
 
 ## Typical Workflow
 
-**Recommended: Use `find` for the complete pipeline**
+**Recommended: Use `find` with project tracking**
 
 ```bash
-# Find 5 quality names in one command
+# Start searching for names (tracked in database)
 bun run src/cli.ts find "A Python-to-binary compiler with 6ms startup" \
-  -n 5 -p python -o report.md
+  -n 5 -p python --project mycompiler
+
+# Continue the search later - automatically excludes previous names
+bun run src/cli.ts find "A Python-to-binary compiler" -n 3 --project mycompiler
+
+# View all candidates across sessions
+bun run src/cli.ts leaderboard mycompiler
 
 # Check the winner in full detail
 bun run src/cli.ts check kest
 ```
 
-**Alternative: Step-by-step workflow**
+**Alternative: One-off search without tracking**
 
 ```bash
-# 1. Generate candidates with auto-iteration
-bun run src/cli.ts generate "A Python-to-binary compiler" \
-  -n 5 -u 3 -p minimal --json > candidates.json
-
-# 2. Judge the qualified names
-bun run src/cli.ts judge "A Python-to-binary compiler" \
-  -f candidates.json -o report.md
-
-# 3. Check the winner in full detail
-bun run src/cli.ts check rayo
+# Find names without database tracking
+bun run src/cli.ts find "A CLI task runner" -n 5 -o report.md
 ```
 
 ## Available Checkers
@@ -351,6 +393,7 @@ Customize AI prompts in `prompts/`:
 src/
 ├── cli.ts              # Main CLI entry point
 ├── find.ts             # One-step name discovery pipeline
+├── db.ts               # SQLite database for tracking projects
 ├── generator.ts        # AI name generation
 ├── judge.ts            # AI evaluation
 ├── interactive.ts      # Interactive & auto-iterate modes
