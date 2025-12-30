@@ -215,17 +215,27 @@ Speed up availability checks by using profiles:
 
 ## AI Models
 
-Available models for generation and judging:
+Models are configured in `config/models.yaml`. Current frontier models include:
 
-| Alias | Model | Best For |
-|-------|-------|----------|
-| `claude-sonnet` | Claude Sonnet 4 | High-quality generation (default) |
-| `claude-haiku` | Claude 3.5 Haiku | Fast, cheap iteration |
-| `gpt-4o` | GPT-4o | Alternative perspective |
-| `gpt-4o-mini` | GPT-4o Mini | Budget option |
-| `gemini-flash` | Gemini 2.0 Flash | Fast generation |
-| `gemini-2.5-pro` | Gemini 2.5 Pro | Critical judging (default for judge) |
-| `llama-70b` | Llama 3.3 70B | Open source option |
+| Provider | Models |
+|----------|--------|
+| OpenAI | `gpt-5.2-chat` (default generate), `gpt-5.2-pro`, `o3`, `o4-mini` |
+| Anthropic | `claude-opus-4.5`, `claude-sonnet-4.5`, `claude-haiku-4.5` |
+| Google | `gemini-3-pro` (default judge), `gemini-3-flash`, `gemini-2.5-pro` |
+| Kimi | `kimi-k2-thinking`, `kimi-k2` |
+
+Run `bun run src/cli.ts models` to see all available models.
+
+### Temperature Settings
+
+Temperature is configured per task type in `config/models.yaml`:
+
+```yaml
+temperature:
+  generate: 1.0      # Maximum creativity for brainstorming
+  refine: 0.6        # When using --exclude (variation generation)
+  judge: 0.3         # Analytical evaluation
+```
 
 ## Configuration
 
@@ -261,6 +271,26 @@ custom:
     - crates
 ```
 
+### AI Models
+
+Configure models in `config/models.yaml`:
+
+```yaml
+models:
+  gpt-5.2-chat:
+    id: "openai/gpt-5.2-chat"
+    description: "GPT-5.2 Chat - latest frontier"
+
+defaults:
+  generate: "gpt-5.2-chat"
+  judge: "gemini-3-pro"
+
+temperature:
+  generate: 1.0
+  refine: 0.6
+  judge: 0.3
+```
+
 ### Prompts
 
 Customize AI prompts in `prompts/`:
@@ -282,7 +312,8 @@ src/
     ├── npm.ts, pypi.ts, github.ts, ...
 
 config/
-└── profiles.yaml       # Checker profiles
+├── profiles.yaml       # Checker profiles
+└── models.yaml         # AI models and temperature settings
 
 prompts/
 ├── generate-names.md   # Generation prompt
