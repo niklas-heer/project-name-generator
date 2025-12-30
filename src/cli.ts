@@ -8,6 +8,7 @@ import { listModels, getDefaultModel, getModelDetails } from "./openrouter";
 import { runInteractiveMode, runUntilAvailable } from "./interactive";
 import { resolveCheckers, listProfiles } from "./profiles";
 import { judgeNames, generateMarkdownReport } from "./judge";
+import { findNames, generateFindReport } from "./find";
 
 interface CheckNameOptions {
   json?: boolean;
@@ -743,6 +744,144 @@ async function main() {
         }
       },
     );
+
+  interface FindCommandOptions {
+    count: string;
+    batch: string;
+    threshold: string;
+    minScore: string;
+    verdict: string;
+    maxIterations: string;
+    model: string;
+    judgeModel: string;
+    profile?: string;
+    checkers?: string;
+    style?: string;
+    sources?: string;
+    output?: string;
+    json?: boolean;
+  }
+
+  program
+    .command("find")
+    .description(
+      "Find quality project names: generate → check → judge in one step",
+    )
+    .argument("<description>", "Description of your project")
+    .option("-n, --count <number>", "Number of quality candidates to find", "5")
+    .option("-b, --batch <number>", "Names to generate per iteration", "15")
+    .option("-t, --threshold <percent>", "Availability threshold %", "80")
+    .option("--min-score <score>", "Minimum judge score (1-5)", "3.5")
+    .option(
+      "--verdict <types>",
+      "Accepted verdicts: strong,consider,reject (comma-separated)",
+      "strong,consider",
+    )
+    .option("--max-iterations <n>", "Maximum generation iterations", "10")
+    .option(
+      "-m, --model <model>",
+      `Generator model (${modelsStr})`,
+      defaultGenerateModel,
+    )
+    .option(
+      "--judge-model <model>",
+      `Judge model (${modelsStr})`,
+      defaultJudgeModel,
+    )
+    .option(
+      "-p, --profile <name>",
+      "Checker profile (minimal, node, python, rust, go, full, complete)",
+    )
+    .option(
+      "--checkers <list>",
+      "Comma-separated list of specific checkers (overrides --profile)",
+    )
+    .option(
+      "-s, --style <style>",
+      "Name style: short, word, compound, all",
+      "all",
+    )
+    .option("--sources <languages>", "Comma-separated language sources")
+    .option("-o, --output <file>", "Write markdown report to file")
+    .option("-j, --json", "Output as JSON")
+    .action(async (description: string, options: FindCommandOptions) => {
+      const targetCount = parseInt(options.count, 10);
+      const batchSize = parseInt(options.batch, 10);
+      const threshold = parseInt(options.threshold, 10) / 100;
+      const minScore = parseFloat(options.minScore);
+      const maxIterations = parseInt(options.maxIterations, 10);
+      const verdicts = options.verdict.split(",").map((v) => v.trim());
+
+      // Validate inputs
+      if (isNaN(targetCount) || targetCount < 1) {
+        console.error(chalk.red("--count must be a positive number"));
+        process.exit(1);
+      }
+      if (isNaN(batchSize) || batchSize < 1) {
+        console.error(chalk.red("--batch must be a positive number"));
+        process.exit(1);
+      }
+      if (isNaN(threshold) || threshold < 0 || threshold > 1) {
+        console.error(chalk.red("--threshold must be between 0 and 100"));
+        process.exit(1);
+      }
+      if (isNaN(minScore) || minScore < 1 || minScore > 5) {
+        console.error(chalk.red("--min-score must be between 1 and 5"));
+        process.exit(1);
+      }
+
+      // Resolve checkers
+      let checkers;
+      try {
+        checkers = await resolveCheckers({
+          profile: options.profile,
+          checkers: options.checkers,
+        });
+      } catch (error) {
+        console.error(
+          chalk.red(`Error: ${error instanceof Error ? error.message : error}`),
+        );
+        process.exit(1);
+      }
+
+      const sources = options.sources?.split(",").map((s) => s.trim());
+
+      try {
+        const result = await findNames({
+          description,
+          targetCount,
+          batchSize,
+          threshold,
+          minScore,
+          verdicts,
+          maxIterations,
+          generateModel: options.model,
+          judgeModel: options.judgeModel,
+          checkers,
+          style: options.style as "short" | "word" | "compound" | "all",
+          sources,
+          quiet: options.json,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          const report = generateFindReport(result);
+
+          if (options.output) {
+            await Bun.write(options.output, report);
+            console.log(chalk.green(`\nReport written to ${options.output}`));
+          } else {
+            console.log(report);
+          }
+        }
+      } catch (error) {
+        console.error(
+          chalk.red(`Error: ${error instanceof Error ? error.message : error}`),
+        );
+        process.exit(1);
+      }
+    });
 
   program.addHelpText(
     "after",

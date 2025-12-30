@@ -15,11 +15,12 @@ cp env.example .env
 ## Quick Start
 
 ```bash
-# Generate name candidates with AI
-bun run src/cli.ts generate "A CLI task runner for automating dev workflows" -n 10
+# Find 5 quality names in one command (recommended)
+bun run src/cli.ts find "A CLI task runner for automating dev workflows" -n 5 -p minimal
 
-# Auto-generate until you find 3 available names
-bun run src/cli.ts generate "A CLI task runner" -n 5 -u 3 -p minimal
+# Or step-by-step:
+# Generate name candidates with AI
+bun run src/cli.ts generate "A CLI task runner" -n 10
 
 # Judge candidates with a critical AI reviewer
 bun run src/cli.ts judge "A CLI task runner" blitz flux rayo takt kura
@@ -29,6 +30,44 @@ bun run src/cli.ts check myproject
 ```
 
 ## Commands
+
+### `find` - One-Step Name Discovery (Recommended)
+
+Find quality project names in a single command. Automatically generates, checks availability, and judges candidates until it finds the number you need.
+
+```bash
+bun run src/cli.ts find <description> [options]
+
+Options:
+  -n, --count <number>         Number of quality candidates to find (default: 5)
+  -b, --batch <number>         Names to generate per iteration (default: 15)
+  -t, --threshold <percent>    Availability threshold % (default: 80)
+  --min-score <score>          Minimum judge score 1-5 (default: 3.5)
+  --verdict <types>            Accepted verdicts (default: strong,consider)
+  --max-iterations <n>         Safety limit (default: 10)
+  -m, --model <model>          Generator model
+  --judge-model <model>        Judge model
+  -p, --profile <name>         Checker profile
+  -s, --style <style>          Name style: short, word, compound, all
+  -o, --output <file>          Write markdown report to file
+  -j, --json                   Output as JSON
+```
+
+**Examples:**
+
+```bash
+# Find 5 quality names for a Python project
+bun run src/cli.ts find "A Python-to-binary compiler with 6ms startup" -n 5 -p python
+
+# Only accept strong verdicts with score >= 4.0
+bun run src/cli.ts find "A fast web framework" --min-score 4.0 --verdict strong
+
+# Save report to file
+bun run src/cli.ts find "A CLI task runner" -n 3 -o report.md
+
+# Use specific models
+bun run src/cli.ts find "My project" -m claude-sonnet-4.5 --judge-model gemini-3-pro
+```
 
 ### `generate` - AI Name Generation
 
@@ -154,9 +193,22 @@ bun run src/cli.ts profiles
 
 ## Typical Workflow
 
+**Recommended: Use `find` for the complete pipeline**
+
+```bash
+# Find 5 quality names in one command
+bun run src/cli.ts find "A Python-to-binary compiler with 6ms startup" \
+  -n 5 -p python -o report.md
+
+# Check the winner in full detail
+bun run src/cli.ts check kest
+```
+
+**Alternative: Step-by-step workflow**
+
 ```bash
 # 1. Generate candidates with auto-iteration
-bun run src/cli.ts generate "A Python-to-binary compiler with 6ms startup" \
+bun run src/cli.ts generate "A Python-to-binary compiler" \
   -n 5 -u 3 -p minimal --json > candidates.json
 
 # 2. Judge the qualified names
@@ -165,10 +217,6 @@ bun run src/cli.ts judge "A Python-to-binary compiler" \
 
 # 3. Check the winner in full detail
 bun run src/cli.ts check rayo
-
-# 4. Continue if needed, excluding previous attempts
-bun run src/cli.ts generate "A Python-to-binary compiler" \
-  -n 5 -u 3 --exclude-from candidates.json --json > candidates2.json
 ```
 
 ## Available Checkers
@@ -302,12 +350,13 @@ Customize AI prompts in `prompts/`:
 ```
 src/
 ├── cli.ts              # Main CLI entry point
-├── types.ts            # TypeScript types
+├── find.ts             # One-step name discovery pipeline
 ├── generator.ts        # AI name generation
 ├── judge.ts            # AI evaluation
 ├── interactive.ts      # Interactive & auto-iterate modes
 ├── openrouter.ts       # OpenRouter API client
 ├── profiles.ts         # Checker profile loader
+├── types.ts            # TypeScript types
 └── checkers/           # Platform checkers
     ├── npm.ts, pypi.ts, github.ts, ...
 

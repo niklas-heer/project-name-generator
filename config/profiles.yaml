@@ -10,6 +10,16 @@ profiles:
       - pypi
       - domain-dev
 
+  # ucharm - Python tool with Homebrew distribution
+  ucharm:
+    description: "PyPI, Homebrew, GitHub, and .dev domain"
+    checkers:
+      - pypi
+      - homebrew
+      - github
+      - github-org
+      - domain-dev
+
   # Node.js / JavaScript projects
   node:
     description: "Node.js ecosystem checks"
